@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 
 [assembly: AssemblyTitle("AlwaysOn Keys")]
 [assembly: AssemblyProduct("AlwaysOn Keys")]
@@ -51,6 +52,16 @@ namespace AlwaysOnKeys
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int max);
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern IntPtr CreateWaitableTimerExW(IntPtr attrs, string name, uint flags, uint access);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool SetWaitableTimer(SafeWaitHandle h, ref long due, int period, IntPtr cb, IntPtr arg, bool resume);
+
+        /// Wraps a kernel timer so it can be waited on together with the event.
+        sealed class TimerHandle : WaitHandle
+        {
+            public TimerHandle(IntPtr h) { SafeWaitHandle = new SafeWaitHandle(h, true); }
+        }
 
         public const uint CmdPanic = 0x80000001;
         readonly ConcurrentQueue<uint> q = new ConcurrentQueue<uint>();
@@ -64,6 +75,7 @@ namespace AlwaysOnKeys
         int loggedCC = -1;
         IntPtr lastHwnd = IntPtr.Zero; bool lastIsGame;
         Thread th;
+        WaitHandle[] waits; // { ev, high-resolution timer }, or null if unavailable
 
         public Router(Synth s, FfxivPlayer f) { synth = s; ffx = f; }
 
@@ -73,10 +85,24 @@ namespace AlwaysOnKeys
 
         void Loop()
         {
+            // Normal waits round up to the 15.6 ms system tick, too coarse for strums
+            // and octave-key timing. A high-resolution timer (Windows 10 1803+) wakes
+            // on time without raising the timer rate for the whole system.
+            IntPtr hTimer = CreateWaitableTimerExW(IntPtr.Zero, null, 2 /*HIGH_RESOLUTION*/, 0x1F0003 /*TIMER_ALL_ACCESS*/);
+            TimerHandle timer = hTimer == IntPtr.Zero ? null : new TimerHandle(hTimer);
+            if (timer != null) waits = new WaitHandle[] { ev, timer };
+            else Log.Write("router: no high-resolution timer, FFXIV timing uses the 15.6 ms system tick");
             while (!quit)
             {
                 int wait = ffx.MsUntilTick();
-                ev.WaitOne(wait < 0 ? Timeout.Infinite : wait);
+                if (wait < 0) ev.WaitOne();
+                else if (wait > 0)
+                {
+                    long due = -10000L * wait; // relative, 100 ns units
+                    if (timer != null && SetWaitableTimer(timer.SafeWaitHandle, ref due, 0, IntPtr.Zero, IntPtr.Zero, false))
+                        WaitHandle.WaitAny(waits);
+                    else ev.WaitOne(wait);
+                }
                 uint m;
                 while (q.TryDequeue(out m))
                 {
@@ -115,6 +141,7 @@ namespace AlwaysOnKeys
                 case 0x90:
                 {
                     LastNote = d1;
+                    ffx.SeeNote(ch, d1);
                     bool game = mode == Mode.Ffxiv || (mode == Mode.Auto && GameFocused());
                     route[ch * 128 + d1] = (byte)(game ? 2 : 1);
                     if (game) ffx.NoteOn(ch, d1); else synth.NoteOn(ch, d1, d2);
@@ -333,7 +360,7 @@ namespace AlwaysOnKeys
             pauseItem.Checked = paused;
             startupItem.Checked = IsStartup();
             string conn = midi.IsOpen ? "Connected: " + midi.OpenName : midiProblem;
-            statusItem.Text = conn + (router.LastNote >= 0 && midi.IsOpen ? "   (last note " + router.LastNote + ")" : "")
+            statusItem.Text = conn + (router.LastNote >= 0 && midi.IsOpen ? "   (last note " + router.LastNote + ", keyboard Oct " + OctText(ffx.KeyboardOctave) + ")" : "")
                 + (router.LastCC >= 0 && midi.IsOpen ? "  (last knob CC " + router.LastCC + " = " + router.LastCCValue + ")" : "");
             audioItem.Text = "Audio: " + (audio.Info.Length > 0 ? audio.Info : "starts on first note");
             instrMenu.Text = "Instrument:  " + synth.Instruments[cur].Name;
@@ -380,6 +407,8 @@ namespace AlwaysOnKeys
             catch (Exception e) { Log.Write("startup: " + e.Message); }
             RefreshMenu();
         }
+
+        static string OctText(int k) { return k == 0 ? "0" : k > 0 ? "+" + k : "\u2212" + (-k); }
 
         // 0 = disconnected (grey), 1 = ready (teal), 2 = FFXIV (purple)
         void UpdateIcon(int state)

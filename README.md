@@ -67,28 +67,50 @@ touch a knob again.
 
 ## FFXIV mode
 
-FFXIV plays **one note at a time** across 3 octaves (C3–C6). In Auto mode, keys go to
+FFXIV plays **one note at a time** across 3 octaves (C3–C6). Chords are strummed so you can still play them. In Auto mode, keys go to
 the game whenever the FFXIV window is focused. Open performance mode with your
 instrument first, otherwise the key presses act as normal game keys.
 
 | Control | Effect in game |
 |---|---|
-| Keys | Play notes. The most recent key you pressed wins. Middle C on the keyboard is the game's middle C. Notes outside the game's range are moved up or down by octaves until they fit. |
-| **Pad 1 (hold)** | −1 octave, only while held |
-| **Pad 2 (hold)** | +1 octave, only while held |
+| Keys | Play notes. Middle C on the keyboard is the game's middle C. Notes outside the game's range are moved up or down by octaves until they fit. |
+| Chords | Strummed from the lowest note to the highest, 20 ms apart, so they sound like one quick strum on plucked instruments. The top note keeps sounding while you hold it. |
+| Oct − / Oct + | Shift the keyboard's range by an octave, as in a DAW |
+| **Pad 1 (hold)** | Shift an octave toward the game octave the keys don't reach (see below) |
+| **Pad 2 (hold)** | Shift two octaves the same way, so the lower half reaches the far octave |
+| Other pads | Nothing (they only play drums in local mode) |
 | Joystick left/right | Step bend: re-plays the held note 1–2 semitones down or up and snaps back when you let go |
 | Joystick up | Trill between the held note and the note a whole step above. The further you push, the faster it goes. |
 
 ### About the Oct − / Oct + buttons
 
 Those two buttons are handled **inside the keyboard itself** and send no MIDI
-message. Each press shifts the notes the keyboard sends, and its LED shows the shift.
-No app on the PC can tell when they are pressed or released, so they can't be made to
-work only while held. That's why **pads 1 and 2** do hold-to-shift instead (pads send a
-press and a release). The Oct buttons still work as usual, and in FFXIV mode the app
-follows whatever octave they've set. To use different pads, change `OctaveDownPad`
-and `OctaveUpPad` in the settings file. The menu's status line shows the last note
-number received, which helps you find a pad's number.
+message. Each press shifts the notes the keyboard sends, and its LED shows the shift,
+just as it would with a DAW. In FFXIV mode that moves which of the game's three
+octaves the 25 keys reach. A press can't be turned into a hold, because no app can
+tell when the buttons are pressed or released. The menu's status line shows the last
+note number received, which helps you check where the keyboard sits.
+
+### Octave pads
+
+The 25 keys cover two of the game's three octaves. Holding pad 1 or pad 2 (the pad to
+its right) swaps in the third:
+
+| Keyboard | Half | No pad | Pad 1 | Pad 2 (or both) |
+|---|---|---|---|---|
+| No Oct set | lower | −1 octave | normal | +1 octave |
+| No Oct set | upper | normal | +1 octave | +1 octave |
+| Oct + | lower | normal | −1 octave | −1 octave |
+| Oct + | upper | +1 octave | normal | −1 octave |
+
+When pad 2 would go past the game's range, the note folds back an octave, so it ends
+up where pad 1 would put it. Holding both pads acts like pad 2. The pads apply to
+notes you start while holding them. Because the Oct buttons send no
+MIDI, the app works out the keyboard's octave from the notes you play. Any key in the
+half that moved settles it. For example, after pressing Oct +, play one note in the
+upper half. The menu's status line shows the octave the app thinks the keyboard is at.
+Use `OctavePad` and `TwoOctavePad` in the settings to pick other pads, or `-1` to
+turn one off.
 
 ### Keybinds
 
@@ -115,8 +137,11 @@ C to the highest. Combos like `Ctrl+Q` are allowed.
   from non-admin apps. Run AlwaysOn Keys as administrator too, or stop running the game
   as admin.
 - **Fast repeated notes get swallowed:** raise `RetriggerGapMs`, for example to 25.
-- **Octave jumps sometimes land in the wrong octave:** raise `ModifierGapMs`, for
-  example to 10.
+- **Held notes in the low or high octave play staccato, or land in the wrong octave:**
+  raise `OctaveKeyLeadMs`, for example to 40. The game needs to see the Ctrl/Shift
+  octave key a frame before the note key, so low frame rates need a longer lead.
+- **Strummed chords skip notes:** raise `StrumMs` above one frame at your frame rate
+  (17 ms at 60 FPS, 34 ms at 30 FPS). `StrumMs=0` turns strumming off.
 - FFXIV also has its own built-in MIDI input. It can't use the keyboard while this
   app holds it, so use **Pause** if you'd rather use the game's own MIDI support.
 - Sending key presses to the game from an outside tool is a grey area under the FFXIV
@@ -138,6 +163,6 @@ The app is written in plain C# 5 and compiled with the `csc.exe` that ships with
 | `src/Synth.cs` | Instrument models, drums, reverb |
 | `src/Audio.cs` | WASAPI output that sleeps when idle |
 | `src/Midi.cs` | winmm MIDI input |
-| `src/Ffxiv.cs` | Note-to-keybind mapping, hold-octave pads, step bend and trill |
+| `src/Ffxiv.cs` | Note-to-keybind mapping, octave pads, strum, step bend and trill |
 | `src/App.cs` | Tray menu, routing, self-test |
 | `src/Config.cs` | INI settings and log |

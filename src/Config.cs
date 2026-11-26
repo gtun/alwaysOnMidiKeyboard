@@ -83,7 +83,7 @@ namespace AlwaysOnKeys
             sb.AppendLine("Knobs=" + Get("General.Knobs", "70,71,72,73,74"));
             sb.AppendLine("; Where those knobs were last left (0-127, blank = default). Saved automatically.");
             sb.AppendLine("KnobValues=" + Get("General.KnobValues", ""));
-            sb.AppendLine("; MIDI channel the pads send on (they play drums in local mode)");
+            sb.AppendLine("; MIDI channel the pads send on (they play drums in local mode and are ignored in FFXIV mode)");
             sb.AppendLine("DrumChannel=" + Get("General.DrumChannel", "10"));
             sb.AppendLine();
             sb.AppendLine("[Ffxiv]");
@@ -99,19 +99,24 @@ namespace AlwaysOnKeys
             sb.AppendLine("FullKeys=" + Get("Ffxiv.FullKeys", ""));
             sb.AppendLine("; MIDI note that plays the game's middle C (60 = middle C on the keyboard)");
             sb.AppendLine("MiddleC=" + Get("Ffxiv.MiddleC", "60"));
-            sb.AppendLine("; Pads that act as HOLD -1 / +1 octave (MIDI note numbers on PadChannel).");
-            sb.AppendLine("; MPK mini 3 defaults: pad 1 = 36, pad 2 = 37 ... pad 8 = 43 (bank A).");
-            sb.AppendLine("OctaveDownPad=" + Get("Ffxiv.OctaveDownPad", "36"));
-            sb.AppendLine("OctaveUpPad=" + Get("Ffxiv.OctaveUpPad", "37"));
-            sb.AppendLine("PadChannel=" + Get("Ffxiv.PadChannel", "10"));
             sb.AppendLine("; Joystick left/right: re-plays the held note up to this many semitones away");
             sb.AppendLine("BendRange=" + Get("Ffxiv.BendRange", "2"));
             sb.AppendLine("; Joystick up (modulation): trill to this many semitones above the held note");
             sb.AppendLine("TrillInterval=" + Get("Ffxiv.TrillInterval", "2"));
             sb.AppendLine("; Pause (ms) so the game notices a repeated note. Raise if fast repeats get dropped.");
             sb.AppendLine("RetriggerGapMs=" + Get("Ffxiv.RetriggerGapMs", "15"));
-            sb.AppendLine("; Pause (ms) after pressing an octave modifier. Raise if octave jumps play the wrong octave.");
-            sb.AppendLine("ModifierGapMs=" + Get("Ffxiv.ModifierGapMs", "0"));
+            sb.AppendLine("; Pad that shifts an octave while held (MIDI note on DrumChannel; pad 1 = 36 ... pad 8 = 43, -1 = none).");
+            sb.AppendLine("; It shifts up when the keyboard has no Oct set, and down when Oct + is on.");
+            sb.AppendLine("OctavePad=" + Get("Ffxiv.OctavePad", "36"));
+            sb.AppendLine("; Pad that shifts two octaves the same way while held (wins over OctavePad if both are held).");
+            sb.AppendLine("TwoOctavePad=" + Get("Ffxiv.TwoOctavePad", "37"));
+            sb.AppendLine("; Time (ms) the octave key (Ctrl/Shift) goes down before its note key. If both land in the");
+            sb.AppendLine("; same game frame, held notes in the low/high octave play staccato. Must be longer than one");
+            sb.AppendLine("; frame: 25 covers 40+ FPS, use 40 if you play at 30 FPS.");
+            sb.AppendLine("OctaveKeyLeadMs=" + Get("Ffxiv.OctaveKeyLeadMs", "25"));
+            sb.AppendLine("; Chords are strummed upwards, this many ms between notes (0 = off, last key wins).");
+            sb.AppendLine("; Keep it above one frame (17 ms at 60 FPS) or the game skips notes.");
+            sb.AppendLine("StrumMs=" + Get("Ffxiv.StrumMs", "20"));
             File.WriteAllText(Path, sb.ToString());
         }
     }
