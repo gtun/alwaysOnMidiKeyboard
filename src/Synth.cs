@@ -1,5 +1,6 @@
 // Lightweight polyphonic synth: a handful of cheap instrument models (additive,
-// 2-op FM, subtractive, Karplus-Strong plucked string, flute) plus a small
+// 2-op FM, subtractive, Karplus-Strong plucked string with optional
+// pick position, sawari buzz and body resonance, flute) plus a small
 // synthesized drum kit. Nothing is computed while no voices are sounding.
 using System;
 
@@ -27,6 +28,11 @@ namespace AlwaysOnKeys
         public bool FiltFollowsAmp;
         // pluck
         public float T60 = 3f, Smooth = 0.5f, PluckBright = 0.5f;
+        public float PickPos;           // 0..0.5, where along the string it's plucked (0 = off)
+        public float Buzz;              // sawari: string buzzing against the neck (shamisen)
+        public float PitchDrop;         // semitones sharp at the attack, settling in ~60 ms
+        public float BodyFreq, Body;    // skin/body resonance (one band-pass)
+        public float ClickLp = 0.5f;    // plectrum/skin noise colour (lower = darker thump)
         // vibrato / breath
         public float Vibrato, VibratoDelay = 0.3f, Breath;
 
@@ -90,6 +96,18 @@ namespace AlwaysOnKeys
                 new Instrument { Name = "Chiptune", Kind = Kind.Sub,
                     Wave = 1, Unison = 1, Cutoff = 20000, KeyTrack = 0f,
                     A = 0.002f, D = 0.25f, S = 0.75f, R = 0.05f, Gain = 0.18f },
+                new Instrument { Name = "Koto", Kind = Kind.Pluck,
+                    T60 = 3.6f, Smooth = 0.3f, PluckBright = 0.85f, PickPos = 0.11f, PitchDrop = 0.18f,
+                    Click = 0.12f, ClickLp = 0.6f, BodyFreq = 420, Body = 0.25f,
+                    KeyScale = true, A = 0.001f, S = 1f, R = 0.9f, Gain = 0.75f },
+                new Instrument { Name = "Shamisen", Kind = Kind.Pluck,
+                    T60 = 1.7f, Smooth = 0.22f, PluckBright = 0.95f, PickPos = 0.16f, Buzz = 0.55f, PitchDrop = 0.3f,
+                    Click = 0.7f, ClickTime = 0.025f, ClickLp = 0.22f, BodyFreq = 320, Body = 0.45f,
+                    KeyScale = true, A = 0.001f, S = 1f, R = 0.3f, Gain = 0.75f },
+                new Instrument { Name = "Sanshin", Kind = Kind.Pluck,
+                    T60 = 2.3f, Smooth = 0.45f, PluckBright = 0.6f, PickPos = 0.22f, Buzz = 0.15f, PitchDrop = 0.12f,
+                    Click = 0.3f, ClickTime = 0.02f, ClickLp = 0.18f, BodyFreq = 230, Body = 0.6f,
+                    KeyScale = true, A = 0.001f, S = 1f, R = 0.4f, Gain = 0.85f },
             };
         }
     }
@@ -141,7 +159,7 @@ namespace AlwaysOnKeys
         float clickLvl, clickCoef, nLp, nLp2;
         float cph, mph, m2ph, idx, idxCoef, idxFloor, idx2, idx2Coef;
         float fenv, fenvCoef, ic1, ic2, a1, a2, a3;
-        readonly float[] ks; int ksW; float ksLoss, ksPrev;
+        readonly float[] ks; int ksW; float ksLoss, ksPrev, ksTh, ksThCoef, pOfs;
         float e1, e2, e3, c1, c2, c3, f0, hpA, hpB, hpC;
         uint rng;
 
@@ -221,8 +239,22 @@ namespace AlwaysOnKeys
                     for (int i = 0; i < len; i++) { y += a * (Noise() - y); ks[i] = y; mean += y; }
                     mean /= len;
                     for (int i = 0; i < len; i++) ks[i] -= mean;
+                    // pluck position: comb the excitation (near the bridge = thin, nasal)
+                    int pp = (int)(ins.PickPos * len);
+                    if (pp > 0) for (int i = len - 1; i >= pp; i--) ks[i] -= ks[i - pp];
+                    float pk = 0;
+                    for (int i = 0; i < len; i++) pk = Math.Max(pk, Math.Abs(ks[i]));
                     ksW = len; ksPrev = 0;
                     ksLoss = (float)Math.Pow(0.001, 1.0 / (ins.T60 * kscale * Freq));
+                    // sawari barrier sits below the string and falls with its natural decay
+                    ksTh = pk * (1f - 0.85f * ins.Buzz);
+                    ksThCoef = (float)Math.Pow(0.001, 1.0 / (ins.T60 * kscale * sr));
+                    pOfs = ins.PitchDrop * (0.4f + 0.6f * vel);
+                    if (ins.Body > 0)
+                    {
+                        float g = (float)Math.Tan(Math.PI * Math.Min(ins.BodyFreq, 0.4f * sr) / sr), kq = 1f / 2.5f;
+                        a1 = 1f / (1f + g * (g + kq)); a2 = g * a1; a3 = g * a2;
+                    }
                     break;
                 }
                 case Kind.Flute:
@@ -385,8 +417,11 @@ namespace AlwaysOnKeys
                 case Kind.Pluck:
                 {
                     int M = ks.Length;
-                    float sm = ins.Smooth, d = 1f / inc - sm / (1f - sm);
+                    float pinc = inc;
+                    if (pOfs > 0.002f) { pinc *= 1f + 0.0578f * pOfs; pOfs *= (float)Math.Exp(-n / (0.06 * sr)); }
+                    float sm = ins.Smooth, d = 1f / pinc - sm / (1f - sm);
                     if (d > M - 4) d = M - 4; if (d < 2) d = 2;
+                    float buzz = ins.Buzz, body = ins.Body, clp = ins.ClickLp;
                     for (int i = 0; i < n; i++)
                     {
                         float rp = ksW - d; if (rp < 0) rp += M;
@@ -394,9 +429,23 @@ namespace AlwaysOnKeys
                         float x = ks[i0] + (ks[i1] - ks[i0]) * fr;
                         float y = (1f - sm) * x + sm * ksPrev;
                         ksPrev = y;
+                        if (buzz > 0)
+                        {
+                            // string slaps the neck on one side: keeps regenerating bright harmonics
+                            if (y < -ksTh) y = -ksTh + (y + ksTh) * 0.25f;
+                            ksTh *= ksThCoef;
+                        }
                         ks[ksW] = y * ksLoss;
                         if (++ksW >= M) ksW = 0;
-                        buf[i] = y * NextEnv();
+                        float o = y;
+                        if (clickLvl > 1e-5f) { nLp += clp * (Noise() - nLp); o += nLp * clickLvl; clickLvl *= clickCoef; }
+                        if (body > 0)
+                        {
+                            float v3 = o - ic2, v1 = a1 * ic1 + a2 * v3, v2 = ic2 + a2 * ic1 + a3 * v3;
+                            ic1 = 2f * v1 - ic1; ic2 = 2f * v2 - ic2; o += body * v1;
+                        }
+                        if (buzz > 0) { hpA += 0.002f * (o - hpA); o -= hpA; } // block DC from the one-sided barrier
+                        buf[i] = o * NextEnv();
                     }
                     break;
                 }

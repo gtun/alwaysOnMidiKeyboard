@@ -28,7 +28,7 @@ Click the icon (left or right) to open the menu:
 
 | Menu | What it does |
 |---|---|
-| Instrument | Pick one of 16 sounds |
+| Instrument | Pick one of 19 sounds |
 | Mode | **Auto** sends FFXIV keys while the game window is focused and plays sound otherwise. You can also force either one. |
 | Pause | Releases the keyboard so a DAW can use it. Windows only lets one app open a MIDI input at a time. |
 | Start with Windows | Adds or removes the app from your login programs (current user only) |
@@ -40,11 +40,13 @@ Unplugging and replugging the keyboard is handled automatically.
 
 Grand Piano, Electric Piano, Drawbar Organ, String Ensemble, Warm Pad, Brass, Flute,
 Nylon Guitar, Harp, Marimba, Vibraphone, Music Box, Crystal Bells, Synth Lead,
-Synth Bass, Chiptune. The **pads play a drum kit** (kick, snare, hats, toms, clap,
+Synth Bass, Chiptune, plus three Japanese/Okinawan plucked strings: Koto, Shamisen
+(with the buzzing *sawari* tone) and Sanshin. The **pads play a drum kit** (kick, snare, hats, toms, clap,
 cymbals).
 
 You can switch instruments from the keyboard too: press **PROG CHANGE**, then a pad
-(pads 1–8 select instruments 1–8, or 9–16 on pad bank B).
+(pads 1–8 select instruments 1–8, or 9–16 on pad bank B). Koto, Shamisen and Sanshin
+(17–19) are picked from the tray menu.
 
 ## Controls (local sound)
 
